@@ -1,6 +1,7 @@
 import csv
 from datetime import datetime
 from typing import Iterator, List
+from operator import attrgetter
 
 from dagster import In, Nothing, Out, String, job, op, usable_as_dagster_type
 from pydantic import BaseModel
@@ -41,21 +42,23 @@ def csv_helper(file_name: str) -> Iterator[Stock]:
             yield Stock.from_list(row)
 
 
-@op
-def get_s3_data():
-    pass
+@op(config_schema={"s3_key": String})
+def get_s3_data(context) -> List[Stock]:
+    return list(csv_helper(context.op_config["s3_key"]))
 
 
 @op
-def process_data():
-    pass
+def process_data(context, stocks: List[Stock]) -> Aggregation:
+    highest_stock = max(stocks, key=attrgetter('high'))
+    
+    return Aggregation(date=highest_stock.date, high=highest_stock.high)
 
 
 @op
-def put_redis_data():
+def put_redis_data(context, agg: Aggregation):
     pass
 
 
 @job
 def week_1_pipeline():
-    pass
+    put_redis_data(process_data(get_s3_data()))
